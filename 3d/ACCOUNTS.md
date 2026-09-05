@@ -62,7 +62,7 @@ appears and nothing changes; with them filled in it appears on load.
 
 **Authentication → URL Configuration**:
 
-- **Site URL**: `https://anirudhatalmale6-alt.github.io/enchanted-journal/3d/`
+- **Site URL**: `https://becomingyourself.github.io/journey-to-me/3d/`
 - **Redirect URLs**: add the same address.
 
 This matters for the "forgotten your password" link. Supabase will only send

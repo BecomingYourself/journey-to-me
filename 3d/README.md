@@ -9,8 +9,8 @@ chose. Two settings, switched in the top right corner:
 Both are the same scene and the same book; only the lighting, the ground and
 the background change. The choice is remembered per device.
 
-**Live:** https://anirudhatalmale6-alt.github.io/enchanted-journal/3d/
-**Walkthrough:** https://anirudhatalmale6-alt.github.io/enchanted-journal/preview.html
+**Live:** https://becomingyourself.github.io/journey-to-me/3d/
+**Walkthrough:** https://becomingyourself.github.io/journey-to-me/preview.html
 
 Nothing in it is a picture of a book. The boards, the spine, the page block and
 every leaf you turn are geometry; the candles are light sources. The shadow

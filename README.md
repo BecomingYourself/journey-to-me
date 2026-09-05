@@ -3,7 +3,7 @@
 A web version of the journal that people can write in, keep, and install on a
 phone, tablet, MacBook or laptop like an app.
 
-**Live:** https://anirudhatalmale6-alt.github.io/enchanted-journal/
+**Live:** https://becomingyourself.github.io/journey-to-me/
 
 This folder is the version the client chose: the book seen straight on,
 resting in a light blue sky of drifting clouds, glowing stars and falling
@@ -11,9 +11,9 @@ petals.
 
 - **3D** — [`3d/`](3d/) is the other direction that was tried, a real
   three-dimensional scene on a candlelit walnut table. Kept for reference and
-  untouched. [Live](https://anirudhatalmale6-alt.github.io/enchanted-journal/3d/).
+  untouched. [Live](https://becomingyourself.github.io/journey-to-me/3d/).
 
-Both are on the [walkthrough page](https://anirudhatalmale6-alt.github.io/enchanted-journal/preview.html),
+Both are on the [walkthrough page](https://becomingyourself.github.io/journey-to-me/preview.html),
 with a video of each.
 
 ## What's here
