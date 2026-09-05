@@ -140,7 +140,7 @@
      spreads across the whole width down there. */
   #install {
     position: fixed; z-index: 55; pointer-events: auto;
-    top: calc(max(14px, env(safe-area-inset-top)) + 32px); left: 14px;
+    top: calc(max(14px, env(safe-area-inset-top)) + 44px); left: 14px;
     border-color: rgba(217,172,98,.75);
     transition: opacity .6s ease .5s, background .25s, color .25s, border-color .25s;
   }
@@ -231,11 +231,25 @@
     position: absolute; top: max(14px, env(safe-area-inset-top)); left: 14px;
     z-index: 6; display: flex; align-items: center; gap: .6rem;
     pointer-events: auto; font-size: 11px; letter-spacing: .1em;
-    color: #a98a63; max-width: 40vw;
+    color: #f5dcae; max-width: 40vw;
+    /* This strip is now the ONLY way to reach an account, so it has to be
+       readable against lit wood as well as against a bright sky.  Gold text
+       alone measured 2.0:1 on the candlelit table — it needs the same pill the
+       rest of the chrome sits on, which is what makes those legible. */
+    padding: .42rem .72rem; border-radius: 999px;
+    background: rgba(16,6,8,.82); backdrop-filter: blur(3px);
+    border: 1px solid rgba(217,172,98,.34);
   }
   #account[hidden] { display: none; }
   #accountWho { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  body.day #account { color: #2c5170; }
+  body.day #account {
+    color: #12354f; background: rgba(255,255,255,.88);
+    border-color: rgba(255,255,255,.85);
+  }
+  /* The links inside carry .authLink, which sets its own dim colour for the
+     sign-in card's dark background. In the corner, over wood or over sky, they
+     have to be legible on their own. */
+  #account .authLink { color: inherit; }
 
   /* Where the keystrokes actually land.  It is never seen — the letters are
      painted onto the page in the scene — but it has to be a real field so a
@@ -331,7 +345,7 @@
 <div id="auth" hidden>
   <div id="authCard">
     <h1>The Journey to Me</h1>
-    <p id="authLead">Sign in, and your journal is yours on any device you open it on.</p>
+    <p id="authLead">Your journal is already saved on this device. Sign in and it follows you to any other one — and survives if you lose this one.</p>
     <form id="authForm" autocomplete="on">
       <input id="authEmail" type="email" name="email" autocomplete="email"
              placeholder="your email" required>
@@ -342,7 +356,7 @@
     <p id="authMsg"></p>
     <button class="authLink" id="authSwap" type="button">Create an account instead</button>
     <button class="authLink" id="authForgot" type="button">Forgotten your password?</button>
-    <button class="authLink" id="authSkip" type="button">Just use this device</button>
+    <button class="authLink" id="authSkip" type="button">Not now — keep it on this device</button>
   </div>
 </div>
 

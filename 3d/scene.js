@@ -772,30 +772,63 @@ function petalGeometry() {
 }
 const petalGeom = petalGeometry();
 
-/* "No floating flowers on the page."  A petal used to be allowed to fall
-   through the open spread and settle on it.  Now none of them ever start over
-   the book: the footprint is kept clear with enough margin for the sway the
-   animation adds (±0.055 in x, ±0.035 in z) and for the petal's own size, so a
-   petal that begins outside stays outside all the way down. */
-const KEEP_X = CW + 0.10;          // open, the book runs from -CW to +CW
-const KEEP_Z = CH / 2 + 0.09;
+/* "No floating flowers on the page", and the camera now looks almost straight
+   DOWN at the book, framed tight on it.  Those two facts together decide
+   everything here, and the first attempt got both wrong.
 
-function petalStart() {
-  let x = (Math.random() - 0.5) * 1.30;
-  const z = -0.55 + Math.random() * 0.85;
-  /* Not just the footprint: anything nearer the camera than the book's far edge
-     passes IN FRONT of the open spread and lands on the page in screen space,
-     however correct it is in three dimensions. Only petals clearly BEHIND the
-     book may cross the middle of the frame, and those read as depth. */
-  if (Math.abs(x) < KEEP_X && z > -KEEP_Z) {
-    const side = x < 0 ? -1 : 1;
-    x = side * (KEEP_X + Math.random() * 0.34);
-  }
-  return { x, z };
+   Straight down, a petal falling vertically travels along the view axis: it
+   grows a little and goes nowhere on screen.  The client's reading was exactly
+   right — "it looks like they are no longer moving".  Falling is not motion any
+   more; only movement ACROSS the frame is.
+
+   And the frame is cropped so close that there is barely any world space
+   outside the book that is on screen at all — measured, the visible table at
+   page height is about as wide as the book itself.  Choosing world coordinates
+   and hoping they land in the margin put all twenty-six of them off screen.
+
+   So a petal is positioned in SCREEN space and unprojected back into the world
+   at a chosen depth.  "Not in front of the book" is a statement about the
+   screen, so that is where it should be enforced: each petal is given a channel
+   beside the book's own screen rectangle and never leaves it.  This holds at
+   any window shape, in portrait, in single-page mode and at any zoom, because
+   the rectangle is measured every frame rather than assumed. */
+
+/* Seen from almost overhead the book is a flat rectangle, so its silhouette is
+   its TOP face — the underside projects inside the top and never widens it.
+   Four corners, at the open extent and a little above the page surface so a
+   leaf in mid-turn is covered.  Using all eight corners of a tall box instead
+   inflated the rectangle by about a fifth and swallowed the very margins the
+   petals have to live in. */
+const BOOK_TOP_Y = 0.052;
+const BOOK_CORNERS = [
+  new THREE.Vector3(-CW, BOOK_TOP_Y, -CH / 2),
+  new THREE.Vector3( CW, BOOK_TOP_Y, -CH / 2),
+  new THREE.Vector3(-CW, BOOK_TOP_Y,  CH / 2),
+  new THREE.Vector3( CW, BOOK_TOP_Y,  CH / 2)
+];
+
+const CHANNELS = ['top', 'left', 'right'];
+
+function petalStart(i) {
+  /* Top first: the band above the pages is the widest clear strip and the one
+     a reader actually looks at.  The sides carry the rest. */
+  const lane = CHANNELS[i % 3 === 0 ? 1 + (i % 2) : 0];
+  return {
+    lane,
+    along: Math.random(),                      // where it is along its channel
+    band: 0.18 + Math.random() * 0.64,         // where across the channel's width
+    speed: (Math.random() < 0.5 ? -1 : 1) * (0.055 + Math.random() * 0.085),
+    depth: 0.55 + Math.random() * 0.30,        // metres from the camera
+    swayAmp: 0.010 + Math.random() * 0.018,    // in screen heights
+    sway: 0.4 + Math.random() * 1.5,
+    phase: Math.random() * 9,
+    spin: (Math.random() - 0.5) * 1.7,
+    tumble: 0.6 + Math.random() * 1.6
+  };
 }
 
 const petals = [];
-for (let i = 0; i < 34; i++) {
+for (let i = 0; i < 20; i++) {
   const m = new THREE.Mesh(petalGeom, new THREE.MeshStandardMaterial({
     map: petalMaps[i % petalMaps.length],
     normalMap: petalNrm, normalScale: new THREE.Vector2(0.5, 0.5),
@@ -803,38 +836,132 @@ for (let i = 0; i < 34; i++) {
     roughness: 0.62, metalness: 0,
     emissive: 0x8c1230, emissiveIntensity: 0.30
   }));
-  const sc = 0.016 + Math.random() * 0.017;
+  const sc = 0.007 + Math.random() * 0.007;
   m.scale.set(sc, sc * 1.25, sc);
-  m.userData = {
-    ...petalStart(),
-    y: Math.random() * 1.0,
-    fall: 0.035 + Math.random() * 0.055,
-    sway: 0.4 + Math.random() * 1.5,
-    phase: Math.random() * 9,
-    spin: (Math.random() - 0.5) * 1.7,
-    tumble: 0.6 + Math.random() * 1.6
-  };
+  m.userData = petalStart(i);
   m.castShadow = false;
   scene.add(m);
   petals.push(m);
 }
 
-/* Some have already fallen.  They never move again — they are here so the
-   table does not look freshly swept. */
-for (let i = 0; i < 9; i++) {
-  const g = new THREE.Group();
-  const m = new THREE.Mesh(petalGeom, petals[i].material);
-  const sc = 0.019 + (i % 4) * 0.004;
-  m.scale.set(sc, sc * 1.25, sc);
-  m.rotation.x = -Math.PI / 2 + 0.05;
-  m.receiveShadow = true;
-  g.add(m);
-  // Clear of the book, or they are simply buried under it and never seen.
-  const a = (i / 9) * Math.PI * 2 + 0.7;
-  const r = 0.30 + ((i * 7) % 5) * 0.055;
-  g.position.set(Math.cos(a) * r, 0.0009, Math.sin(a) * r * 0.80 + 0.05);
-  g.rotation.y = a * 1.7;
-  scene.add(g);
+/* There used to be nine more lying on the table, so it would not look freshly
+   swept.  They never moved — the whole point, and fine when the camera could be
+   anywhere.  Fixed almost overhead and this close in, one sits just behind the
+   book and reads as a sticker somebody forgot to animate.  They are gone. */
+
+/* ---- where the book is, in pixels, this frame ---- */
+const bookRect = { x0: 0, x1: 0, y0: 0, y1: 0, ok: false };
+const _v = new THREE.Vector3();
+
+function measureBook() {
+  const el = renderer.domElement;
+  const w = el.clientWidth || 1, h = el.clientHeight || 1;
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const c of BOOK_CORNERS) {
+    _v.copy(c).project(camera);
+    /* A corner behind the camera projects to a mirrored, meaningless point.
+       Widening to the whole frame is the safe reading of that. */
+    if (_v.z > 1) { x0 = 0; x1 = w; y0 = 0; y1 = h; break; }
+    const px = (_v.x * 0.5 + 0.5) * w, py = (-_v.y * 0.5 + 0.5) * h;
+    if (px < x0) x0 = px; if (px > x1) x1 = px;
+    if (py < y0) y0 = py; if (py > y1) y1 = py;
+  }
+  bookRect.x0 = x0; bookRect.x1 = x1; bookRect.y0 = y0; bookRect.y1 = y1;
+  bookRect.ok = true;
+  return { w, h };
+}
+
+const _dir = new THREE.Vector3();
+
+function placePetal(p, t, dt) {
+  const d = p.userData;
+  const el = renderer.domElement;
+  const w = el.clientWidth || 1, h = el.clientHeight || 1;
+  const tanHalf = Math.tan(camera.fov * Math.PI / 360);
+
+  // Half the petal's diagonal — its true reach, whatever way it is tumbling.
+  const worldR = p.scale.y * 0.64;
+  const rAt = depth => (worldR / (2 * depth * tanHalf)) * h;
+
+  d.along += d.speed * dt;
+  if (d.along > 1.12) d.along = -0.12;
+  if (d.along < -0.12) d.along = 1.12;
+
+  /* How much clear screen each channel has beside the book.  Which channels
+     exist at all depends entirely on the window: on a wide desktop the book
+     runs off the top of the frame and the band above it is simply not there,
+     while in portrait the sides are gone instead.  A petal born into a channel
+     that does not exist would just never be drawn — which is how fifteen of the
+     twenty-two silently disappeared — so it moves to one that does. */
+  const rooms = {
+    top: bookRect.y0,
+    left: bookRect.x0,
+    right: w - bookRect.x1
+  };
+  const pad = h * 0.012;
+  const minRoom = 2 * rAt(1.8) + pad;
+  if (rooms[d.lane] < minRoom) {
+    let best = d.lane, bestRoom = rooms[d.lane];
+    for (const k of CHANNELS) if (rooms[k] > bestRoom) { best = k; bestRoom = rooms[k]; }
+    if (bestRoom < minRoom) { p.visible = false; return; }
+    // It was not being drawn anyway, so re-entering from the edge cannot jump.
+    d.lane = best;
+    d.along = d.speed > 0 ? -0.12 : 1.12;
+  }
+  const room = rooms[d.lane];
+  let depth = d.depth;
+  let r = rAt(depth);
+  if (2 * r + pad > room) {
+    const want = Math.max(3, (room - pad) / 2);
+    depth = Math.min(1.8, worldR / (2 * want * tanHalf) * h);
+    r = rAt(depth);
+  }
+  if (r < 3.5 || 2 * r + pad > room) { p.visible = false; return; }
+
+  const swayPx = Math.sin(t * d.sway + d.phase) * d.swayAmp * h * 0.35;
+  const across = r + d.band * (room - pad - 2 * r);
+  let px, py;
+  if (d.lane === 'top') {
+    px = -0.06 * w + d.along * 1.12 * w;
+    py = across + swayPx;
+  } else {
+    /* Only the upper part of the frame.  Lower down the screen IS nearer the
+       camera — the table is only half a metre away — so there is no distance
+       left to put a petal at without it looming.  It fades out on the way down
+       rather than blinking off. */
+    py = -0.06 * h + d.along * 0.78 * h;
+    px = d.lane === 'left' ? across + swayPx : w - across + swayPx;
+  }
+
+  // Screen point -> a ray from the camera -> a world point `depth` along it.
+  _v.set((px / w) * 2 - 1, -(py / h) * 2 + 1, 0.5).unproject(camera);
+  _dir.copy(_v).sub(camera.position).normalize();
+
+  /* Down a side channel the ray dives under the table, and along the top one it
+     runs into the backdrop, before it has gone the full distance.  Pull the
+     petal nearer along the SAME ray rather than moving it sideways — the screen
+     position, and therefore the clearance, is preserved exactly. */
+  if (_dir.y < -1e-4) depth = Math.min(depth, (camera.position.y - 0.02) / -_dir.y);
+  if (_dir.z < -1e-4) depth = Math.min(depth, (camera.position.z + 1.00) / -_dir.z);
+  depth = Math.max(0.12, depth);
+
+  /* Fade in and out at the ends of the run, and fade out if being pulled in
+     towards the table has made it too big for its channel.  Nothing about a
+     petal should ever pop. */
+  const ends = Math.min(d.along + 0.06, 1.06 - d.along) / 0.18;
+  const grown = rAt(depth) / Math.max(1, r);
+  const fit = grown <= 1.05 ? 1 : Math.max(0, 1 - (grown - 1.05) * 4);
+  const a = Math.max(0, Math.min(1, ends)) * fit;
+  if (a <= 0.01) { p.visible = false; return; }
+
+  p.visible = true;
+  p.material.opacity = a;
+  /* The cutout threshold has to come down with the opacity, or it wins: three
+     tests the texture's alpha AFTER opacity is applied, so a fixed 0.42 discards
+     the whole petal the moment it fades below it — a pop wearing a fade's
+     clothes.  Never let it reach zero, which would recompile the shader. */
+  p.material.alphaTest = Math.max(0.02, 0.42 * a);
+  p.position.copy(camera.position).addScaledVector(_dir, depth);
 }
 
 /* ------------------------------------------------------------ stardust */
@@ -1367,25 +1494,6 @@ function step(dt) {
     }
   }
 
-  for (const p of petals) {
-    const d = p.userData;
-    d.y -= d.fall * dt;
-    if (d.y < 0.004) {
-      d.y = 0.95 + Math.random() * 0.25;
-      Object.assign(d, petalStart());
-    }
-    p.position.set(
-      d.x + Math.sin(t * d.sway + d.phase) * 0.055,
-      d.y,
-      d.z + Math.cos(t * d.sway * 0.7 + d.phase) * 0.035
-    );
-    p.rotation.set(
-      t * d.tumble + d.phase,
-      t * d.spin,
-      Math.sin(t * d.sway + d.phase) * 0.6
-    );
-  }
-
   dustMat.uniforms.uTime.value = t;
   dustMat.uniforms.uScale.value = dustScale *
     THREE.MathUtils.clamp(0.58 / camera.position.distanceTo(controls.target), 0.45, 1.2);
@@ -1398,6 +1506,24 @@ function step(dt) {
   if (wantOne !== wasSinglePage) { wasSinglePage = wantOne; reframe(); }
   syncTabs();
   controls.update();
+
+  /* Last, and in this order.  The petals are placed against the book's measured
+     position ON SCREEN, so the camera must already be where it will be rendered
+     from — a frame of lag here shows up as petals sliding over the page while
+     the reader is pinching to zoom. */
+  camera.updateMatrixWorld();
+  camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+  measureBook();
+  for (const p of petals) {
+    const d = p.userData;
+    placePetal(p, t, dt);
+    p.rotation.set(
+      t * d.tumble + d.phase,
+      t * d.spin,
+      Math.sin(t * d.sway + d.phase) * 0.6
+    );
+  }
+
   composer.render();
 }
 
@@ -1534,13 +1660,13 @@ function say(text, ok) {
   authMsg.classList.toggle('ok', !!ok);
 }
 
-/* The corner strip has two jobs: it says who is signed in, and — for anyone who
-   chose to keep the journal on this device — it is the way back to an account
-   later. Without that, "just use this device" is a one-way door. */
+/* The corner strip has two jobs: it says who is signed in, and it is the way TO
+   an account for anybody who wants one. Since the journal no longer opens on a
+   sign-in wall, this strip is the only route in — so it shows whenever accounts
+   exist at all, not only after somebody has already made a choice. */
 function showAccount() {
   const u = cloud.currentUser();
-  const skipped = localStorage.getItem(SKIP_KEY) === '1';
-  accountEl.hidden = !(u || skipped);
+  accountEl.hidden = !cloud.configured();
   accountWho.textContent = u ? (u.email || 'signed in') : '';
   accountOut.hidden = !u;
   accountIn.hidden = !!u;
@@ -1702,7 +1828,9 @@ accountOut.addEventListener('click', async () => {
   live.forEach((slot, idx) => paint(slot, idx));
   showAccount();
   setSigningUp(false);
-  authEl.hidden = false;
+  // Back to the book, not to a wall — signing out is not a way of being locked
+  // out of a journal that now lives on the device.
+  authEl.hidden = true;
 });
 
 cloud.onSyncState((kind, detail) => {
@@ -1727,11 +1855,12 @@ if (cloud.configured()) {
       authEl.hidden = false;
     } else if (cloud.currentUser()) {
       adoptAccount();
-    } else if (localStorage.getItem(SKIP_KEY) === '1') {
-      authEl.hidden = true;      // they have already said they do not want one
     } else {
+      /* Nobody is asked to sign in to read their own journal. It opens on the
+         book; the corner strip is there for anyone who wants their writing to
+         follow them to another device. */
       setSigningUp(false);
-      authEl.hidden = false;
+      authEl.hidden = true;
     }
     showAccount();
   });
@@ -1773,8 +1902,9 @@ window.goToDay = n => {
   state.turn = null;
 };
 window.__scene = {
+  THREE,
   state, PAGES, NLEAF, camera, controls, pool, live, renderer, scene,
-  candles, topL, topR, flying,
+  candles, topL, topR, flying, petals,
   next, prev, openCover, closeCover, focusPage, blur, repaint,
   // Hand control, for recording a walkthrough at an exact frame rate.
   capture(on) { running = !on; if (!on) { clk.getDelta(); requestAnimationFrame(frame); } },
