@@ -450,12 +450,14 @@ cloudSea.position.y = -0.004;
 cloudSea.receiveShadow = true;
 dayRig.add(cloudSea);
 
-const skyAmbient = new THREE.HemisphereLight(0xdcecff, 0xffffff, 0.85);
+/* Sky above, warm bounce below. The sky half was a cold blue and the ground
+   half plain white, which is why the leather and the paper came out cool. */
+const skyAmbient = new THREE.HemisphereLight(0xeaf3ff, 0xffe4c2, 0.80);
 dayRig.add(skyAmbient);
 
 // One sun, high and a little to the left, matching the glow painted into the
 // sky plate — so the book's shadow falls the way the sky says it should.
-const sun = new THREE.DirectionalLight(0xfff6e6, 1.95);
+const sun = new THREE.DirectionalLight(0xffeccb, 2.15);
 sun.position.set(-0.62, 1.35, 0.52);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -472,7 +474,9 @@ dayRig.add(sun.target);
 
 // A cool fill from the opposite side, so the shaded board is sky-blue rather
 // than black — outdoors, the shadow side is lit by the sky itself.
-const skyFill = new THREE.DirectionalLight(0xbcd8f4, 0.55);
+/* Sky light on the shaded side is genuinely blue, but at 0.55 of a saturated
+   blue it was tinting the whole book. Softer, and much paler. */
+const skyFill = new THREE.DirectionalLight(0xdce9f6, 0.30);
 skyFill.position.set(0.75, 0.45, -0.55);
 dayRig.add(skyFill);
 
@@ -509,6 +513,21 @@ function setMode(next) {
   scene.background = day ? null : CANDLE_BG;
   scene.fog = day ? dayFog : candleFog;
 
+  /* THE light blue overlay. Fog is applied by DISTANCE to everything in the
+     scene, and the book is half a metre away, so roughly a tenth of sky blue
+     was being washed straight over the cover and the pages — exactly the
+     "overlay" the client could see and I could not name.
+
+     The fog is there for the cloud sea, which needs to fade into the sky. So
+     the book opts out of it in daylight, and keeps it in candlelight, where
+     fading into the dark is the whole effect. */
+  book.traverse(o => {
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    mats.forEach(m => {
+      if (m && m.fog !== undefined && m.fog === day) { m.fog = !day; m.needsUpdate = true; }
+    });
+  });
+
   // Bloom that reads as candleglow against black turns a bright sky to milk.
   bloom.strength = day ? 0.10 : 0.34;
   bloom.threshold = day ? 0.94 : 0.86;
@@ -517,7 +536,7 @@ function setMode(next) {
      way to keep it blue rather than grey is to sit it lower on the curve:
      drop the exposure and put the light back with the sun and the sky fill.
      At 1.10 the sky came out the colour of wet concrete. */
-  renderer.toneMappingExposure = day ? 0.86 : 1.10;
+  renderer.toneMappingExposure = day ? 0.92 : 1.10;
 
   // Petals lit for a candle are nearly black in daylight, and the stardust is
   // a warm glow that only exists because the room is dark.
