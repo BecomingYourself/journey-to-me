@@ -128,10 +128,13 @@ function flourish(ctx, cx, cy, w) {
 }
 
 function paper(ctx, tex) {
-  ctx.fillStyle = '#f7eeda';
+  /* The same parchment the storybook version uses (--paper-tint), not a pale
+     cream. Under daylight the paler mix came out looking like copier paper —
+     the client put the two side by side and the difference is obvious. */
+  ctx.fillStyle = '#e9d2a8';
   ctx.fillRect(0, 0, PAGE_W, PAGE_H);
   if (tex && tex.complete && tex.naturalWidth) {
-    ctx.globalAlpha = 0.62;
+    ctx.globalAlpha = 0.82;
     ctx.drawImage(tex, 0, 0, PAGE_W, PAGE_H);
     ctx.globalAlpha = 1;
   }
@@ -139,8 +142,8 @@ function paper(ctx, tex) {
   const g = ctx.createRadialGradient(
     PAGE_W * 0.5, PAGE_H * 0.45, PAGE_W * 0.18,
     PAGE_W * 0.5, PAGE_H * 0.5, PAGE_W * 0.85);
-  g.addColorStop(0, 'rgba(255,251,240,0.42)');
-  g.addColorStop(1, 'rgba(120,86,48,0.13)');
+  g.addColorStop(0, 'rgba(255,246,222,0.30)');
+  g.addColorStop(1, 'rgba(122,80,36,0.20)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, PAGE_W, PAGE_H);
 }

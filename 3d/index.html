@@ -7,6 +7,11 @@
 <meta name="theme-color" content="#0a0406">
 <meta name="description" content="The Journey to Me — a 21 day self-transformation journal, as a real book you can open and write in.">
 <link rel="icon" href="../assets/icon-192.png">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="../assets/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Journey to Me">
 <style>
   /* The journal is written in by hand, so the writing has to be a hand.  The
      old stack leaned on Snell Roundhand and Bradley Hand, which exist on a Mac
@@ -126,6 +131,23 @@
   }
   .mode:hover { border-color: rgba(217,172,98,.7); }
   .mode.on { background: rgba(217,172,98,.9); color: #2a1608; border-color: transparent; }
+  .mode[hidden] { display: none; }
+
+  /* Install has to be reachable on the sign-in screen too — that overlay fills
+     the window, and a button underneath it may as well not exist.  So it sits
+     on its own, above everything, one row below the account line it shares the
+     left-hand corner with.  Not the bottom corner: on a phone #tips wraps and
+     spreads across the whole width down there. */
+  #install {
+    position: fixed; z-index: 55; pointer-events: auto;
+    top: calc(max(14px, env(safe-area-inset-top)) + 32px); left: 14px;
+    border-color: rgba(217,172,98,.75);
+    transition: opacity .6s ease .5s, background .25s, color .25s, border-color .25s;
+  }
+  /* ...but not before the book has arrived, or it flashes over the dark
+     loading screen on its own. */
+  body:not(.loaded) #install { opacity: 0; pointer-events: none; }
+  body.day #install { background: rgba(255,255,255,.55); color: #24455f; border-color: rgba(255,255,255,.9); }
 
   /* In daylight the dark chrome disappears against a bright sky. */
   body.day .mode { background: rgba(255,255,255,.55); color: #24455f; border-color: rgba(255,255,255,.85); }
@@ -190,6 +212,21 @@
   body.day .authLink { color: #2c5170; }
   body.day .authLink:hover { color: #0e3b5c; }
 
+  #installSheet {
+    position: fixed; inset: 0; z-index: 60;
+    display: grid; place-items: center; padding: 1.5rem;
+    background: rgba(10,4,6,.72);
+  }
+  #installSheet[hidden] { display: none; }
+  #installCard {
+    max-width: 24rem; padding: 1.6rem 1.4rem; text-align: center;
+    background: #f3e4c6; color: #3a2412; border-radius: 10px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.55);
+  }
+  #installCard h3 { margin: 0 0 .6rem; font: 400 24px/1.2 Didot,"Bodoni MT",Georgia,serif; color: #7d1f33; }
+  #installCard p { margin: 0 0 1.1rem; font-size: 14px; line-height: 1.6; }
+  #installCard .mode { color: #3a2412; border-color: rgba(120,84,36,.5); background: rgba(255,255,255,.5); }
+
   #account {
     position: absolute; top: max(14px, env(safe-area-inset-top)); left: 14px;
     z-index: 6; display: flex; align-items: center; gap: .6rem;
@@ -244,6 +281,10 @@
       background: linear-gradient(to bottom, #cfa055, #f7e2ab); }
     #modes { top: 10px; right: 10px; }
     .mode { font-size: 10px; padding: .42rem .62rem; }
+    /* The top-left corner is the account line and the row under it is the day
+       tabs, so Install drops below both.  It cannot share either: sitting on
+       top of the tabs it hid days 1 and 2 completely. */
+    #install { top: 96px; left: 10px; }
   }
 </style>
 </head>
@@ -277,6 +318,16 @@
   </div>
 </div>
 
+<button class="mode" id="install" type="button" hidden>Install</button>
+
+<div id="installSheet" hidden>
+  <div id="installCard">
+    <h3>Keep it on your device</h3>
+    <p id="installBody"></p>
+    <button class="mode" id="installClose" type="button">Close</button>
+  </div>
+</div>
+
 <div id="auth" hidden>
   <div id="authCard">
     <h1>The Journey to Me</h1>
@@ -303,5 +354,69 @@
 { "imports": { "three": "./lib/three.module.js" } }
 </script>
 <script type="module" src="./scene.js"></script>
+
+<script>
+/* ---- installing the journal onto a device ----
+   No domain, no app store, no account: the book is added to a home screen
+   straight from the address it is already at, and from then on it opens
+   offline like anything else on the phone. */
+(function () {
+  var btn    = document.getElementById('install');
+  var sheet  = document.getElementById('installSheet');
+  var body   = document.getElementById('installBody');
+  var close  = document.getElementById('installClose');
+
+  /* Already installed?  Then there is nothing to offer.  iOS reports this on
+     navigator, everybody else through the display-mode media query. */
+  var installed = navigator.standalone === true ||
+                  (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function () {});
+    });
+  }
+
+  if (installed) return;
+
+  /* Chrome, Edge and Android hand us a prompt to fire. */
+  var deferred = null;
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferred = e;
+    btn.hidden = false;
+  });
+  window.addEventListener('appinstalled', function () { btn.hidden = true; });
+
+  /* Safari never fires that event, so on an iPhone or iPad the button has to
+     be shown unconditionally and explain the Share menu instead.  Chrome on
+     iOS is still Safari underneath and installs the same way. */
+  var ua  = navigator.userAgent;
+  var iOS = /iPad|iPhone|iPod/.test(ua) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (iOS) btn.hidden = false;
+
+  /* And on a desktop the event may not come at all — an older Firefox, or a
+     browser that decides the visit was too brief.  Rather than the button
+     simply never existing, show it anyway after a moment and explain the
+     menu.  Worst case somebody reads one sentence they did not need. */
+  setTimeout(function () { if (!deferred && btn.hidden) btn.hidden = false; }, 4000);
+
+  btn.addEventListener('click', function () {
+    if (deferred) {
+      deferred.prompt();
+      deferred.userChoice.then(function () { deferred = null; btn.hidden = true; });
+      return;
+    }
+    body.textContent = iOS
+      ? 'Tap the Share button at the bottom of the screen, scroll down and choose "Add to Home Screen". The journal then opens from your home screen like any other app, and works with no internet.'
+      : 'Open your browser’s menu and choose "Install" or "Add to Home screen". The journal then opens on its own, and works with no internet.';
+    sheet.hidden = false;
+  });
+
+  close.addEventListener('click', function () { sheet.hidden = true; });
+  sheet.addEventListener('click', function (e) { if (e.target === sheet) sheet.hidden = true; });
+})();
+</script>
 </body>
 </html>
