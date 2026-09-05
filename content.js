@@ -146,7 +146,7 @@ const JOURNAL = {
       n: 12,
       title: 'The Day of Decluttering',
       body: [
-        'Decluttering means removing things you no longer need to make a space more organized and pleasant.',
+        'Decluttering means removing things you no longer need to make space for a more organized and pleasant environment.',
         'Think about things in your room, closet, or other spaces that you may need to get rid of.',
         'Decluttering can help you recognize what is taking up unnecessary space in your life.',
         'Write down some material things you got rid of and why you got rid of them. Then think about some thoughts you need to get rid of, and why you need to get rid of those thoughts.'

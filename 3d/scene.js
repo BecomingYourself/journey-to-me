@@ -20,7 +20,7 @@ import { EffectComposer } from './lib/postprocessing/EffectComposer.js';
 import { RenderPass } from './lib/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from './lib/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from './lib/postprocessing/OutputPass.js';
-import { buildPages, paintPage, isWritable, dayPage, PAGE_W, PAGE_H } from './pages.js';
+import { buildPages, paintPage, isWritable, dayPage, CLOSING_BUTTON, PAGE_W, PAGE_H } from './pages.js';
 import * as cloud from './cloud.js';
 
 /* ------------------------------------------------------------ the book */
@@ -482,7 +482,9 @@ const candleRig = [table, backdrop, warmAmbient, candle.group, candle2.group,
                    hearth, rim, front, bounce];
 
 const MODE_KEY = 'journey-to-me-3d-mode';
-let mode = localStorage.getItem(MODE_KEY) === 'day' ? 'day' : 'candle';
+/* Daylight is what a first-time reader sees. Anyone who has chosen candlelight
+   before still gets candlelight — the stored choice wins over the default. */
+let mode = localStorage.getItem(MODE_KEY) === 'candle' ? 'candle' : 'day';
 
 const CANDLE_BG = new THREE.Color(0x0a0406);
 const candleFog = new THREE.FogExp2(0x0d0507, 1.35);
@@ -1257,6 +1259,24 @@ canvas.addEventListener('pointerup', e => {
 
   if (wantsSinglePage()) faceSide(onRight ? 1 : -1);
   const idx = onRight ? leafFront(state.leaf) : leafBack(state.leaf - 1);
+
+  /* The last page carries a painted "Return to the cover". There is no DOM on a
+     page — it is a picture on a piece of geometry — so the button is hit-tested
+     from where on the page the ray landed, which is what the UV already is. */
+  if (PAGES[idx] && PAGES[idx].t === 'closing' && hit.uv) {
+    const v = 1 - hit.uv.y;                       // uv.y counts up, the page counts down
+    if (u > CLOSING_BUTTON.x0 && u < CLOSING_BUTTON.x1 &&
+        v > CLOSING_BUTTON.y0 && v < CLOSING_BUTTON.y1) {
+      blur();
+      state.turn = null;
+      state.leaf = 0;
+      state.side = 1;
+      closeCover();
+      updateTabs();
+      return;
+    }
+  }
+
   if (isWritable(PAGES[idx])) focusPage(idx); else blur();
 });
 
@@ -1416,6 +1436,18 @@ function goToPage(p) {
     tabsEl.appendChild(t);
     tabEls.push({ el: t, day: d.n });
   });
+
+  // and one for the last page, marked the way the cover's is
+  const endIdx = PAGES.findIndex(q => q.t === 'closing');
+  if (endIdx > 0) {
+    const t = document.createElement('div');
+    t.className = 'tab';
+    t.textContent = '✦';
+    t.title = JOURNAL.closing.title;
+    t.addEventListener('click', () => goToPage(endIdx));
+    tabsEl.appendChild(t);
+    tabEls.push({ el: t, day: null, page: endIdx });
+  }
 }
 
 /* Called every frame, but the DOM is only touched when something has actually
@@ -1443,8 +1475,13 @@ function updateTabs() {
       if (pg && pg.day) shown.add(pg.day.n);
     }
   }
+  const facing = open ? [2 * state.leaf, 1 + 2 * state.leaf] : [];
   tabEls.forEach(t => {
-    t.el.classList.toggle('active', t.day === null ? !open : shown.has(t.day));
+    let on;
+    if (t.page !== undefined) on = facing.indexOf(t.page) !== -1;   // the last page
+    else if (t.day === null) on = !open;                            // the cover
+    else on = shown.has(t.day);
+    t.el.classList.toggle('active', on);
   });
 }
 

@@ -409,7 +409,52 @@ export function paintPage(ctx, page, ctxState) {
     tl.forEach(l => { ctx.fillText(l, PAGE_W / 2, y); y += 52; });
     flourish(ctx, PAGE_W / 2, y + 6, 230);
     body(ctx, J.closing.body, y + 66);
+    drawButton(ctx, J.closing.backToCover || 'Return to the cover');
   }
+}
+
+/* ------------------------------------------------- the last page's button
+
+   There is no DOM here — the page is a picture painted onto a piece of
+   geometry — so the button is painted too, and the click is worked out from
+   where on the page the ray landed. CLOSING_BUTTON is that rectangle as
+   fractions of the page, which is exactly what a UV coordinate is. */
+export const CLOSING_BUTTON = { x0: 0.24, x1: 0.76, y0: 0.855, y1: 0.925 };
+
+function drawButton(ctx, label) {
+  const x = CLOSING_BUTTON.x0 * PAGE_W;
+  const w = (CLOSING_BUTTON.x1 - CLOSING_BUTTON.x0) * PAGE_W;
+  const y = CLOSING_BUTTON.y0 * PAGE_H;
+  const h = (CLOSING_BUTTON.y1 - CLOSING_BUTTON.y0) * PAGE_H;
+  const r = h / 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, 'rgba(255,247,228,0.92)');
+  g.addColorStop(1, 'rgba(236,215,175,0.92)');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#5a3a12';
+  ctx.font = `600 26px ${SERIF}`;
+  ctx.letterSpacing = '3px';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, PAGE_W / 2, y + h / 2 + 1);
+  ctx.letterSpacing = '0px';
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
 }
 
 function body(ctx, paras, y) {

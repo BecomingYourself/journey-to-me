@@ -78,17 +78,21 @@
   body.portrait #sideways { display: inline; color: var(--gold); }
 
   /* ---- numbered day tabs, carried over from the storybook version ---- */
+  /* Twenty-three of these — the cover, twenty-one days and the last page — and
+     every one has to be reachable without scrolling, or the last days simply
+     are not there as far as the reader is concerned. So they size themselves
+     against the window's height rather than sitting at a fixed 25px. */
   #tabs {
     position: absolute; right: 0; top: 50%; transform: translateY(-50%);
-    z-index: 6; display: flex; flex-direction: column; gap: 3px;
-    padding: .5rem .45rem .5rem .2rem;
-    max-height: 74vh; overflow-y: auto; scrollbar-width: none;
+    z-index: 6; display: flex; flex-direction: column; gap: 2px;
+    padding: .35rem .45rem .35rem .2rem;
+    max-height: 88vh; overflow-y: auto; scrollbar-width: none;
     pointer-events: auto;
   }
   #tabs::-webkit-scrollbar { display: none; }
   .tab {
-    font: 12.5px/1 "Iowan Old Style",Palatino,Georgia,serif;
-    min-width: 34px; height: 25px;
+    font: min(12.5px, 1.7vh)/1 "Iowan Old Style",Palatino,Georgia,serif;
+    min-width: 34px; height: min(25px, 3.1vh);
     display: flex; align-items: center; justify-content: center;
     color: #4a3018;
     background: linear-gradient(to left, #e3c99f, #f6e6c8);
