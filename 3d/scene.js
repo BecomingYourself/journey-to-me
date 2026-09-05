@@ -406,6 +406,62 @@ const skyDome = new THREE.Mesh(
 );
 dayRig.add(skyDome);
 
+/* ...except it cannot actually opt out.  ACES is applied by the OutputPass to
+   the WHOLE FRAME, so a per-material `toneMapped: false` never reaches it, and
+   the curve desaturates hardest exactly where a sky lives — up near white.
+   Measured against the flat 2D version of this very same plate, the dome was
+   coming back with 18% of its saturation: a sunny afternoon rendered as an
+   overcast one.
+
+   Boosting the blue does not fix it — pushed six times over, saturation still
+   only reached 0.18 against the 2D sky's 0.27, because ACES compresses every
+   channel towards white at that brightness.  Bringing the exposure down does
+   reach it, at the cost of dimming the pages, which is not a trade worth making.
+
+   So the sky is written PRE-COMPENSATED: the exact inverse of the tone curve is
+   applied here, and the OutputPass's ACES then undoes it, leaving the plate on
+   screen exactly as painted.  The matrices are the inverses of three's own, and
+   the round trip is exact to four decimal places on real colours.  This is what
+   `toneMapped: false` was asking for and could not have. */
+const skyExposure = { value: 0.92 };
+
+function unToneMap(material) {
+  material.onBeforeCompile = sh => {
+    sh.uniforms.uExposure = skyExposure;
+    sh.fragmentShader = sh.fragmentShader
+      .replace('void main() {', `uniform float uExposure;
+
+vec3 invRRTAndODTFit(vec3 y) {
+  vec3 A = vec3(1.0) - 0.983729 * y;
+  vec3 B = vec3(0.0245786) - 0.432951 * y;
+  vec3 C = -(vec3(0.000090537) + 0.238081 * y);
+  vec3 disc = max(vec3(0.0), B * B - 4.0 * A * C);
+  return (-B + sqrt(disc)) / (2.0 * A);
+}
+
+vec3 unACES(vec3 c) {
+  const mat3 InvOutput = mat3(
+    vec3( 0.643038,  0.059269,  0.005962),
+    vec3( 0.311187,  0.931436,  0.063929),
+    vec3( 0.045775,  0.009295,  0.930118));
+  const mat3 InvInput = mat3(
+    vec3( 1.764741, -0.147028, -0.036337),
+    vec3(-0.675778,  1.160252, -0.162436),
+    vec3(-0.088963, -0.013224,  1.198773));
+  vec3 v = InvOutput * clamp(c, vec3(0.0), vec3(0.99));
+  v = invRRTAndODTFit(v);
+  v = InvInput * v;
+  return max(vec3(0.0), v) * (0.6 / max(0.0001, uExposure));
+}
+
+void main() {`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        diffuseColor.rgb = unACES(diffuseColor.rgb);`);
+  };
+  material.needsUpdate = true;
+}
+unToneMap(skyDome.material);
+
 /* A band of cloud around the horizon rather than a full sphere: the plate's
    alpha closes at its own top and bottom, so wrapped over a whole dome it would
    leave a bare ring of sky at the zenith. */
@@ -416,6 +472,7 @@ const cloudBand = new THREE.Mesh(
     depthWrite: false, fog: false, toneMapped: false, opacity: 0.95
   })
 );
+unToneMap(cloudBand.material);
 dayRig.add(cloudBand);
 
 /* What the book rests on. Fog is what sells it: the plane runs out to 14m, and
@@ -438,10 +495,18 @@ const seaGeom = new THREE.PlaneGeometry(14, 14, 90, 90);
   }
   seaGeom.computeVertexNormals();
 }
+/* The tint is the whole difference between a sunny day and an overcast one.
+   Looking almost straight down, the sky DOME is never actually in shot — hiding
+   it changes not one pixel — so what surrounds the book is this cloud floor, and
+   its plate is white cloud. White cloud, lit white, reads as overcast however
+   blue the sky above it is. Tinting it towards the sky's own blue is what puts
+   the weather back: measured against the flat 2D version the client asked me to
+   match, this lands at 0.25 saturation against its 0.27, where the untinted
+   floor managed 0.04. */
 const cloudSea = new THREE.Mesh(
   seaGeom,
   new THREE.MeshStandardMaterial({
-    map: cloudSeaMap, roughness: 1, metalness: 0,
+    map: cloudSeaMap, color: 0x9cc6ea, roughness: 1, metalness: 0,
     bumpMap: cloudSeaMap, bumpScale: 0.5
   })
 );
@@ -498,7 +563,7 @@ const candleFog = new THREE.FogExp2(0x0d0507, 1.35);
    so at 0.95 the book itself — only 0.6m away — was 28% hazed. At 0.62 the book
    keeps 87% of itself while the cloud sea is 80% gone by two metres, which is
    what puts blue sky behind it instead of a floor of cloud to the horizon. */
-const dayFog    = new THREE.FogExp2(0xa8d2f5, 0.62);
+const dayFog    = new THREE.FogExp2(0x8dc2ef, 0.62);
 
 function setMode(next) {
   mode = next === 'day' ? 'day' : 'candle';
@@ -529,7 +594,10 @@ function setMode(next) {
   });
 
   // Bloom that reads as candleglow against black turns a bright sky to milk.
-  bloom.strength = day ? 0.10 : 0.34;
+/* Zero in daylight, not 0.10: the sky is written pre-compensated and so
+     carries linear values far above 1.0, which sail past any bloom threshold
+     and put a haze back over the very thing this is meant to keep crisp. */
+  bloom.strength = day ? 0.0 : 0.34;
   bloom.threshold = day ? 0.94 : 0.86;
   /* ACES is applied by the OutputPass, to the whole frame — a per-material
      toneMapped:false never reaches it. So the sky cannot opt out, and the only
@@ -537,6 +605,7 @@ function setMode(next) {
      drop the exposure and put the light back with the sun and the sky fill.
      At 1.10 the sky came out the colour of wet concrete. */
   renderer.toneMappingExposure = day ? 0.92 : 1.10;
+  skyExposure.value = renderer.toneMappingExposure;
 
   // Petals lit for a candle are nearly black in daylight, and the stardust is
   // a warm glow that only exists because the room is dark.
@@ -1904,7 +1973,7 @@ window.goToDay = n => {
 window.__scene = {
   THREE,
   state, PAGES, NLEAF, camera, controls, pool, live, renderer, scene,
-  candles, topL, topR, flying, petals,
+  candles, topL, topR, flying, petals, skyExposure,
   next, prev, openCover, closeCover, focusPage, blur, repaint,
   // Hand control, for recording a walkthrough at an exact frame rate.
   capture(on) { running = !on; if (!on) { clk.getDelta(); requestAnimationFrame(frame); } },
