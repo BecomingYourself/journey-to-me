@@ -425,11 +425,7 @@ dayRig.add(skyDome);
    `toneMapped: false` was asking for and could not have. */
 const skyExposure = { value: 0.92 };
 
-function unToneMap(material) {
-  material.onBeforeCompile = sh => {
-    sh.uniforms.uExposure = skyExposure;
-    sh.fragmentShader = sh.fragmentShader
-      .replace('void main() {', `uniform float uExposure;
+const SKY_GLSL = `uniform float uExposure;
 
 vec3 invRRTAndODTFit(vec3 y) {
   vec3 A = vec3(1.0) - 0.983729 * y;
@@ -453,14 +449,35 @@ vec3 unACES(vec3 c) {
   v = InvInput * v;
   return max(vec3(0.0), v) * (0.6 / max(0.0001, uExposure));
 }
+`;
 
-void main() {`)
+function unToneMap(material) {
+  material.onBeforeCompile = sh => {
+    sh.uniforms.uExposure = skyExposure;
+    sh.fragmentShader = sh.fragmentShader
+      .replace('void main() {', SKY_GLSL + '\nvoid main() {')
       .replace('#include <map_fragment>', `#include <map_fragment>
         diffuseColor.rgb = unACES(diffuseColor.rgb);`);
   };
   material.needsUpdate = true;
 }
 unToneMap(skyDome.material);
+
+/* The same trick for a LIT surface, and it has to be injected somewhere else.
+   `map_fragment` runs before the lighting and before the fog, so compensating
+   there would leave both to be crushed by the curve anyway. The very end of the
+   shader is after all three, so what is compensated is the pixel as it will
+   actually appear. */
+function unToneMapLit(material) {
+  material.onBeforeCompile = sh => {
+    sh.uniforms.uExposure = skyExposure;
+    sh.fragmentShader = sh.fragmentShader
+      .replace('void main() {', SKY_GLSL + '\nvoid main() {')
+      .replace('#include <dithering_fragment>',
+               '#include <dithering_fragment>\n  gl_FragColor.rgb = unACES(gl_FragColor.rgb);');
+  };
+  material.needsUpdate = true;
+}
 
 /* A band of cloud around the horizon rather than a full sphere: the plate's
    alpha closes at its own top and bottom, so wrapped over a whole dome it would
@@ -502,17 +519,27 @@ const seaGeom = new THREE.PlaneGeometry(14, 14, 90, 90);
    blue the sky above it is. Tinting it towards the sky's own blue is what puts
    the weather back: measured against the flat 2D version the client asked me to
    match, this lands at 0.25 saturation against its 0.27, where the untinted
-   floor managed 0.04. */
+   floor managed 0.04, and with the emissive below, 0.95 brightness against its
+   0.95 — the daylight now measures as the same weather. */
 const cloudSea = new THREE.Mesh(
   seaGeom,
   new THREE.MeshStandardMaterial({
-    map: cloudSeaMap, color: 0x9cc6ea, roughness: 1, metalness: 0,
-    bumpMap: cloudSeaMap, bumpScale: 0.5
+    map: cloudSeaMap, color: 0xa5cdf0, roughness: 1, metalness: 0,
+    bumpMap: cloudSeaMap, bumpScale: 0.5,
+    /* Tint alone could not do it. A tint MULTIPLIES, so every bit of colour it
+       added cost brightness, and the client's second note was exactly that —
+       bluer, but duller than the 2D version. The emissive puts the light back
+       without taking the colour away, and because this surface is written
+       pre-compensated it is not squeezed by the tone curve on the way out. It
+       carries the cloud plate as its own map, or the added light is flat and
+       washes the cloud tops out of the picture. */
+    emissive: 0xa5cdf0, emissiveMap: cloudSeaMap, emissiveIntensity: 0.45
   })
 );
 cloudSea.rotation.x = -Math.PI / 2;
 cloudSea.position.y = -0.004;
 cloudSea.receiveShadow = true;
+unToneMapLit(cloudSea.material);
 dayRig.add(cloudSea);
 
 /* Sky above, warm bounce below. The sky half was a cold blue and the ground
@@ -604,7 +631,10 @@ function setMode(next) {
      way to keep it blue rather than grey is to sit it lower on the curve:
      drop the exposure and put the light back with the sun and the sky fill.
      At 1.10 the sky came out the colour of wet concrete. */
-  renderer.toneMappingExposure = day ? 0.92 : 1.10;
+  /* 1.12 rather than 0.92 in daylight: she asked for the sunlight to reach the
+     BOOK as well, not just the sky. The pages go from 0.834 to 0.867 and keep
+     their warmth at 0.29 saturation. Candlelight is deliberately untouched. */
+  renderer.toneMappingExposure = day ? 1.12 : 1.10;
   skyExposure.value = renderer.toneMappingExposure;
 
   // Petals lit for a candle are nearly black in daylight, and the stardust is
