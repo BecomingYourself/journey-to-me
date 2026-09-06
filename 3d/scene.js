@@ -638,6 +638,24 @@ function setMode(next) {
   renderer.toneMappingExposure = day ? 1.22 : 1.10;
   skyExposure.value = renderer.toneMappingExposure;
 
+  /* Warm parchment in daylight, plain in candlelight.
+
+     Turning the daylight exposure up put the sunlight on the book she asked
+     for, but brightening anything through ACES also drains its colour, so the
+     pages came out paler than the 2D version she keeps measuring me against.
+     Rather than pick a warmth by eye, I measured hers: 0.388 saturation at hue
+     31. This tint lands the 3D pages on that number.
+
+     It multiplies the painted page, so it is a uniform update on a colour the
+     material already has — no shader rebuild, nothing to stutter mid-turn. And
+     it is daylight only: candlelight is warm from the candles themselves and
+     she is happy with it. */
+  const pageTint = day ? 0xffecd1 : 0xffffff;
+  [topL, topR, flying].forEach(l => {
+    l.front.material.color.setHex(pageTint);
+    l.back.material.color.setHex(pageTint);
+  });
+
   // Petals lit for a candle are nearly black in daylight, and the stardust is
   // a warm glow that only exists because the room is dark.
   petals.forEach(p => { p.material.emissiveIntensity = day ? 0.06 : 0.30; });
