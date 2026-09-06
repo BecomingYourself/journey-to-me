@@ -524,7 +524,7 @@ const seaGeom = new THREE.PlaneGeometry(14, 14, 90, 90);
 const cloudSea = new THREE.Mesh(
   seaGeom,
   new THREE.MeshStandardMaterial({
-    map: cloudSeaMap, color: 0xa5cdf0, roughness: 1, metalness: 0,
+    map: cloudSeaMap, color: 0x86bdee, roughness: 1, metalness: 0,
     bumpMap: cloudSeaMap, bumpScale: 0.5,
     /* Tint alone could not do it. A tint MULTIPLIES, so every bit of colour it
        added cost brightness, and the client's second note was exactly that —
@@ -533,7 +533,7 @@ const cloudSea = new THREE.Mesh(
        pre-compensated it is not squeezed by the tone curve on the way out. It
        carries the cloud plate as its own map, or the added light is flat and
        washes the cloud tops out of the picture. */
-    emissive: 0xa5cdf0, emissiveMap: cloudSeaMap, emissiveIntensity: 0.45
+    emissive: 0x86bdee, emissiveMap: cloudSeaMap, emissiveIntensity: 0.70
   })
 );
 cloudSea.rotation.x = -Math.PI / 2;
@@ -632,9 +632,10 @@ function setMode(next) {
      drop the exposure and put the light back with the sun and the sky fill.
      At 1.10 the sky came out the colour of wet concrete. */
   /* 1.12 rather than 0.92 in daylight: she asked for the sunlight to reach the
-     BOOK as well, not just the sky. The pages go from 0.834 to 0.867 and keep
-     their warmth at 0.29 saturation. Candlelight is deliberately untouched. */
-  renderer.toneMappingExposure = day ? 1.12 : 1.10;
+     BOOK as well, not just the sky, and 1.22 after she asked for brighter
+     again. The pages go from 0.834 to 0.879 and keep their warmth.
+     Candlelight is deliberately untouched. */
+  renderer.toneMappingExposure = day ? 1.22 : 1.10;
   skyExposure.value = renderer.toneMappingExposure;
 
   // Petals lit for a candle are nearly black in daylight, and the stardust is

@@ -10,7 +10,7 @@
    The root sw.js deliberately ignores /3d/, so the two never fight over the
    same requests. */
 
-const CACHE = 'journey-to-me-3d-v1';
+const CACHE = 'journey-to-me-3d-v2';
 
 /* addAll() is all-or-nothing: one 404 in this list and NOTHING is cached, and
    the app silently stops being installable. Every path here is checked. */
@@ -93,11 +93,45 @@ self.addEventListener('fetch', e => {
      somebody who has already visited. */
   if (req.mode === 'navigate') {
     e.respondWith(
-      fetch(req).then(res => {
+      fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' })).then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
         return res;
       }).catch(() => caches.match(req).then(hit => hit || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  /* The journal's OWN code goes to the network first.
+
+     It did not, and that cost the client a whole round of review: cache-first
+     with a quiet background refresh means a change never appears on the visit
+     you make after it ships — only on the one after THAT. She reviewed a build
+     two versions old and reported a fix as not working, which it was. For
+     anything I edit, correctness of what she sees beats saving a few kilobytes.
+
+     The heavy things — textures, fonts, the three.js bundle — do stay
+     cache-first. They are what makes it work with no internet, they are large,
+     and they almost never change. */
+  const codeish = /\.(?:js|mjs|css|html|json|webmanifest)$/i.test(url.pathname) &&
+                  !url.pathname.includes('/lib/');
+
+  if (codeish) {
+    e.respondWith(
+      /* `cache: 'no-cache'` is doing real work here, not belt-and-braces.
+         Going to the network is not enough on its own: the browser's own HTTP
+         cache sits in front of the service worker's fetch, and it had already
+         stored these files while the install step was priming. Without this the
+         worker faithfully asks for a fresh copy and is handed the stale one —
+         which is exactly what my first attempt at this fix did. It forces a
+         revalidation, so a 304 still costs nothing when nothing changed. */
+      fetch(new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' })).then(res => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(req, copy)).catch(() => {});
+        }
+        return res;
+      }).catch(() => caches.match(req))     // offline: whatever we last saw
     );
     return;
   }
