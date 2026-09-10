@@ -71,6 +71,55 @@ export function dayPage(n) { return FRONT_MATTER + (n - 1) * 4; }
 
 /* ------------------------------------------------------------- utilities */
 
+/* Wrapping, but keeping every line's place in the ORIGINAL string.
+
+   The reader has to be able to click into a sentence they wrote earlier and put
+   the cursor there, and the only thing that can answer "which character is
+   under this point" is the same code that decided where the characters went.
+   So each line comes back as {text, start, end}, sliced straight out of the
+   source rather than rebuilt from words — a double space someone typed after a
+   full stop stays a double space, and offsets line up exactly. */
+function wrapMeasured(ctx, text, maxW) {
+  const s = String(text);
+  const out = [];
+  let base = 0;                                  // where this paragraph starts
+
+  for (const para of s.split('\n')) {
+    const words = [];
+    const re = /\S+/g;
+    let m;
+    while ((m = re.exec(para))) words.push({ i: m.index, j: m.index + m[0].length });
+
+    if (!words.length) {                         // an empty line is still a line
+      out.push({ text: '', start: base, end: base });
+      base += para.length + 1;
+      continue;
+    }
+
+    let ls = words[0].i, le = words[0].j;
+    for (let k = 1; k < words.length; k++) {
+      // Measure the candidate line as it would really be drawn, spaces and all.
+      if (ctx.measureText(para.slice(ls, words[k].j)).width > maxW) {
+        out.push({ text: para.slice(ls, le), start: base + ls, end: base + le });
+        ls = words[k].i; le = words[k].j;
+      } else {
+        le = words[k].j;
+      }
+    }
+    out.push({ text: para.slice(ls, le), start: base + ls, end: base + le });
+    base += para.length + 1;                     // + the newline itself
+  }
+  return out;
+}
+
+/* The PRINTED text keeps the original wrap, which rebuilds each line by joining
+   words with a single space.
+
+   It is not the same thing: the day-5 bullets are written '◆  ' with two
+   spaces, and this collapses them, so a bullet fits a word more per line than
+   the faithful version would. That is how every page of this book has been laid
+   out and how the client approved it — measured over all 21 days, swapping in
+   the faithful wrap re-flowed her bullet lines. Print stays as printed. */
 function wrap(ctx, text, maxW) {
   const out = [];
   for (const para of String(text).split('\n')) {
@@ -83,6 +132,13 @@ function wrap(ctx, text, maxW) {
     out.push(line);
   }
   return out;
+}
+
+/* Which wrapped line holds character `p`. A cursor sitting in the whitespace
+   that got swallowed at a line break belongs to the line before it. */
+function lineOf(lines, p) {
+  for (let i = 0; i < lines.length; i++) if (p <= lines[i].end) return i;
+  return Math.max(0, lines.length - 1);
 }
 
 /* The frame from the client's own cover, redrawn: a heavy rule, a hairline
@@ -173,31 +229,83 @@ function nLines(from) { return Math.floor((TEXT_BOT - from) / LINE_GAP); }
 
 /* The client's handwriting, laid along the ruled lines.  Returns how many
    characters were consumed, so a long answer can run onto the next page. */
-function handwrite(ctx, text, from, caret) {
+function handwrite(ctx, text, from, caret, pos) {
   ctx.font = `46px ${HAND}`;
   ctx.fillStyle = '#2f3a52';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  const lines = wrap(ctx, text || '', LINE_W - 12);
+  const s = text || '';
+  const lines = wrapMeasured(ctx, s, LINE_W - 12);
   const max = nLines(from);
-  let lastX = MARGIN + 2, lastY = from - 12;
-  for (let i = 0; i < Math.min(lines.length, max); i++) {
-    const y = from + i * LINE_GAP - 12;
-    ctx.fillText(lines[i], MARGIN + 2, y);
-    lastX = MARGIN + 2 + ctx.measureText(lines[i]).width;
-    lastY = y;
+  const shown = Math.min(lines.length, max);
+  for (let i = 0; i < shown; i++) {
+    ctx.fillText(lines[i].text, MARGIN + 2, from + i * LINE_GAP - 12);
   }
   if (caret) {
+    /* The cursor is drawn wherever it actually IS, not parked at the end of the
+       text. It used to be pinned to the last character, which made it look like
+       clicking back into a sentence had done nothing even once it had. */
+    const p = Math.max(0, Math.min(s.length, pos == null ? s.length : pos));
+    const li = Math.min(lineOf(lines, p), Math.max(0, shown - 1));
+    const ln = lines[li] || { text: '', start: 0 };
+    const col = Math.max(0, Math.min(ln.text.length, p - ln.start));
+    const x = MARGIN + 2 + ctx.measureText(ln.text.slice(0, col)).width;
+    const y = from + li * LINE_GAP - 12;
     ctx.fillStyle = 'rgba(47,58,82,0.85)';
-    ctx.fillRect(lastX + 3, lastY - 32, 3, 40);
+    ctx.fillRect(x + 3, y - 32, 3, 40);
   }
   return { overflow: Math.max(0, lines.length - max) };
+}
+
+/* Turn a point on the page into a position in the text.
+
+   The click arrives as a place on a picture; this is the only thing that knows
+   the picture was made of characters. Used for both a fresh click onto a page
+   and for clicking back into something written earlier. */
+export function caretIndexAt(ctx, page, entry, px, py) {
+  const s = entry || '';
+
+  if (page.t === 'belongs') {
+    // One centred line, so the column is all there is to work out.
+    ctx.font = `52px ${HAND}`;
+    const w = ctx.measureText(s).width;
+    return columnAt(ctx, s, px - (PAGE_W / 2 - w / 2));
+  }
+
+  if (page.t !== 'write') return null;
+
+  ctx.font = `46px ${HAND}`;
+  const lines = wrapMeasured(ctx, s, LINE_W - 12);
+  const max = nLines(LINE_TOP);
+  const shown = Math.max(1, Math.min(lines.length, max));
+
+  /* Each ruled line owns the band ABOVE its rule, which is where its letters
+     sit. Clicking below the last line of writing lands at the end, the way a
+     tap under a paragraph does in any text field. */
+  let li = Math.floor((py - (LINE_TOP - LINE_GAP)) / LINE_GAP);
+  li = Math.max(0, Math.min(shown - 1, li));
+  const ln = lines[li];
+  if (!ln) return s.length;
+  return ln.start + columnAt(ctx, ln.text, px - (MARGIN + 2));
+}
+
+/* How many characters of `text` fit before x, rounded to the nearer gap — so
+   clicking the right half of a letter puts the cursor after it. */
+function columnAt(ctx, text, x) {
+  if (x <= 0) return 0;
+  let prev = 0;
+  for (let i = 1; i <= text.length; i++) {
+    const w = ctx.measureText(text.slice(0, i)).width;
+    if (w >= x) return (x - prev < w - x) ? i - 1 : i;
+    prev = w;
+  }
+  return text.length;
 }
 
 /* ------------------------------------------------------------- the pages */
 
 export function paintPage(ctx, page, ctxState) {
-  const { paperImg, coverImg, entries, caretOn, focus } = ctxState;
+  const { paperImg, coverImg, entries, caretOn, focus, caret } = ctxState;
   ctx.clearRect(0, 0, PAGE_W, PAGE_H);
 
   if (page.t === 'cover') {
@@ -254,7 +362,9 @@ export function paintPage(ctx, page, ctxState) {
     ctx.fillText(name, PAGE_W / 2, mid + 66);
     if (focus === page.i && caretOn) {
       const w = ctx.measureText(name).width;
-      ctx.fillRect(PAGE_W / 2 + w / 2 + 5, mid + 32, 3, 40);
+      const p = Math.max(0, Math.min(name.length, caret == null ? name.length : caret));
+      const x = PAGE_W / 2 - w / 2 + ctx.measureText(name.slice(0, p)).width;
+      ctx.fillRect(x + 5, mid + 32, 3, 40);
     }
     return;
   }
@@ -394,7 +504,7 @@ export function paintPage(ctx, page, ctxState) {
     ctx.letterSpacing = '0px';
     flourish(ctx, PAGE_W / 2, TEXT_TOP + 58, 200);
     rules(ctx, LINE_TOP);
-    handwrite(ctx, entries[page.i] || '', LINE_TOP, focus === page.i && caretOn);
+    handwrite(ctx, entries[page.i] || '', LINE_TOP, focus === page.i && caretOn, caret);
     if (!entries[page.i] && focus !== page.i) {
       ctx.textAlign = 'left';
       ctx.font = `italic 28px ${SERIF}`;

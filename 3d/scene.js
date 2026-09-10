@@ -20,7 +20,7 @@ import { EffectComposer } from './lib/postprocessing/EffectComposer.js';
 import { RenderPass } from './lib/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from './lib/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from './lib/postprocessing/OutputPass.js';
-import { buildPages, paintPage, isWritable, dayPage, CLOSING_BUTTON, PAGE_W, PAGE_H } from './pages.js';
+import { buildPages, paintPage, isWritable, dayPage, caretIndexAt, CLOSING_BUTTON, PAGE_W, PAGE_H } from './pages.js';
 import * as cloud from './cloud.js';
 
 /* ------------------------------------------------------------ the book */
@@ -53,6 +53,7 @@ const state = {
   turn: null,            // {from, to, t, dir, leaf}
   entries: JSON.parse(localStorage.getItem(STORE) || '{}'),
   focus: null,
+  caret: 0,              // where the cursor sits in the focused page's text
   caretOn: true,
   ready: false,
   side: 1                // -1 left page, +1 right — only used one page at a time
@@ -177,7 +178,8 @@ function paint(slot, idx) {
     paperImg, coverImg,
     entries: state.entries,
     caretOn: state.caretOn,
-    focus: state.focus
+    focus: state.focus,
+    caret: state.caret
   });
   slot.tex.needsUpdate = true;
 }
@@ -1447,17 +1449,38 @@ function closeCover() {
 
 const input = document.getElementById('keys');
 
-function focusPage(idx) {
-  if (state.focus === idx) return;
+/* A scratch 2D context used only to measure text. It never draws anything — it
+   is there so a click can be turned into a position in the writing without
+   disturbing the canvas a page is actually painted on. */
+const measure = document.createElement('canvas').getContext('2d');
+
+/* Clicking the canvas takes the keyboard away.
+
+   The canvas cannot hold focus, so the browser hands it back to the document on
+   mousedown — and the hidden field stops receiving keystrokes. This used to be
+   invisible and unfixable from the reader's side: state.focus still said "this
+   page", so clicking the page again was treated as a no-op and the field was
+   never focused back. Writing simply died, and the only way out was to turn to
+   another page and return, which cleared state.focus on the way.
+
+   So focusPage now ALWAYS puts focus back, whether or not the page changed. */
+function focusPage(idx, caretPos) {
+  if (idx === null) { blur(); return; }
   const was = state.focus;
-  state.focus = idx;
-  if (was !== null) repaint(was);
-  if (idx !== null) {
+  if (was !== idx) {
+    state.focus = idx;
+    if (was !== null) repaint(was);
     input.value = state.entries[idx] || '';
-    input.focus({ preventScroll: true });
-    repaint(idx);
   }
-  document.body.classList.toggle('writing', idx !== null);
+  input.focus({ preventScroll: true });
+  const p = caretPos == null ? input.value.length
+                             : Math.max(0, Math.min(input.value.length, caretPos));
+  input.setSelectionRange(p, p);
+  state.caret = p;
+  state.caretOn = true;                    // don't start on a blink-off frame
+  caretT = 0;
+  repaint(idx);
+  document.body.classList.add('writing');
 }
 function blur() {
   if (state.focus === null) return;
@@ -1468,9 +1491,24 @@ function blur() {
   document.body.classList.remove('writing');
 }
 
+/* The cursor can move without a single character changing — arrow keys, Home,
+   End, select-all, a tap somewhere else in the field. Whenever it does, the
+   painted page has to follow, or the cursor on the paper and the one the
+   keyboard is really using drift apart. */
+function syncCaret() {
+  if (state.focus === null) return;
+  const p = input.selectionStart == null ? input.value.length : input.selectionStart;
+  if (p === state.caret) return;
+  state.caret = p;
+  state.caretOn = true;
+  caretT = 0;
+  repaint(state.focus);
+}
+
 input.addEventListener('input', () => {
   if (state.focus === null) return;
   state.entries[state.focus] = input.value;
+  state.caret = input.selectionStart == null ? input.value.length : input.selectionStart;
   // The device copy is written every keystroke and is what makes the journal
   // work with no internet. The account copy, if there is one, is queued and
   // sent after a pause.
@@ -1481,6 +1519,9 @@ input.addEventListener('input', () => {
 input.addEventListener('keydown', e => {
   if (e.key === 'Escape') { blur(); e.preventDefault(); }
 });
+input.addEventListener('keyup', syncCaret);
+input.addEventListener('select', syncCaret);
+document.addEventListener('selectionchange', syncCaret);
 
 /* --------------------------------------------------------- interaction */
 
@@ -1541,7 +1582,20 @@ canvas.addEventListener('pointerup', e => {
     }
   }
 
-  if (isWritable(PAGES[idx])) focusPage(idx); else blur();
+  if (!isWritable(PAGES[idx])) { blur(); return; }
+
+  /* Put the cursor where the finger landed.
+
+     A page is a picture, so there is nothing here that a browser would treat as
+     text — clicking into a sentence written earlier did nothing at all, and a
+     mistake a few lines up could only be reached by deleting back to it. The
+     page painter knows where it put every character, so it answers that. */
+  let caretPos = null;
+  if (hit.uv) {
+    caretPos = caretIndexAt(measure, PAGES[idx], state.entries[idx] || '',
+                            u * PAGE_W, (1 - hit.uv.y) * PAGE_H);
+  }
+  focusPage(idx, caretPos);
 });
 
 addEventListener('keydown', e => {
